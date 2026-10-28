@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CANDIDATE
+  EMPLOYER
+  ADMIN
+}
+
+enum CandidateRole {
+  CUSTOMER_SUPPORT
+  VIRTUAL_ASSISTANCE
+  OPERATIONS_SUPPORT
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  IN_TRAINING
+  ASSESSMENT
+  READY_FOR_MATCHING
+  PLACED
+}
+
+enum HiringRequestStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  IN_PROGRESS
+  FILLED
+  CLOSED
+}
+
+enum CompensationPeriod {
+  HOURLY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  // Retained for existing records; new hiring requests cannot select this period.
+  ANNUAL
+}
+
+enum TrainingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AssessmentStatus {
+  PENDING
+  PASSED
+  FAILED
+}
+
+model User {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  email                String                   @unique @db.VarChar(254)
+  fullName             String                   @db.VarChar(120)
+  passwordHash         String                   @db.VarChar(100)
+  role                 UserRole
+  privacyNoticeVersion String?                  @db.VarChar(40)
+  candidateProfile     CandidateProfile?
+  employerProfile      EmployerProfile?
+  applications         CandidateApplication[]
+  hiringRequests       HiringRequest[]
+  contactMessages      ContactMessage[]
+  refreshSessions      RefreshSession[]
+  reviewedApplications CandidateApplication[]   @relation("ApplicationReviewer")
+  trainingUpdates      TrainingProgress[]       @relation("TrainingUpdater")
+  assessmentUpdates    Assessment[]             @relation("AssessmentUpdater")
+  employerMatches      CandidateEmployerMatch[] @relation("MatchCreator")
+  auditLogs            AuditLog[]
+  placementsCreated    Placement[]              @relation("PlacementCreator")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@index([role, createdAt])
+}
+
+model CandidateProfile {
+  id                          String         @id @default(uuid()) @db.Uuid
+  userId                      String         @unique @db.Uuid
+  phone                       String?        @db.VarChar(30)
+  city                        String?        @db.VarChar(100)
+  educationLevel              String?        @db.VarChar(80)
+  currentSkills               String?        @db.VarChar(1200)
+  roleInterest                CandidateRole?
+  employerVisibilityConsentAt DateTime?
+  user                        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+}
+
+model EmployerProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  companyName String   @db.VarChar(160)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CandidateApplication {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String?                  @db.Uuid
+  fullName             String                   @db.VarChar(120)
+  email                String                   @db.VarChar(254)
+  phone                String                   @db.VarChar(30)
+  city                 String                   @db.VarChar(100)
+  educationLevel       String                   @db.VarChar(80)
+  currentSkills        String                   @db.VarChar(1200)
+  roleInterest         CandidateRole
+  remoteWorkReason     String                   @db.VarChar(1200)
+  status               ApplicationStatus        @default(SUBMITTED)
+  privacyNoticeVersion String                   @db.VarChar(40)
+  internalReviewNote   String?                  @db.VarChar(2000)
+  reviewedAt           DateTime?
+  reviewedById         String?                  @db.Uuid
+  user                 User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reviewedBy           User?                    @relation("ApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  trainingProgress     TrainingProgress?
+  assessment           Assessment?
+  employerMatches      CandidateEmployerMatch[]
+  placement            Placement?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email, createdAt])
+}
+
+model HiringRequest {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String?                  @db.Uuid
+  companyName          String                   @db.VarChar(160)
+  contactName          String                   @db.VarChar(120)
+  contactEmail         String                   @db.VarChar(254)
+  roleNeeded           CandidateRole
+  hireCount            Int
+  placedCount          Int                      @default(0)
+  salaryMin            Decimal                  @db.Decimal(15, 2)
+  salaryMax            Decimal                  @db.Decimal(15, 2)
+  salaryCurrency       String                   @db.Char(3)
+  salaryPeriod         CompensationPeriod
+  timeZone             String                   @db.VarChar(100)
+  roleDetails          String?                  @db.VarChar(2000)
+  status               HiringRequestStatus      @default(SUBMITTED)
+  privacyNoticeVersion String                   @db.VarChar(40)
+  user                 User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  employerMatches      CandidateEmployerMatch[]
+  placements           Placement[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@index([status, createdAt])
+  @@index([contactEmail, createdAt])
+}
+
+model ContactMessage {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String?  @db.Uuid
+  name                 String   @db.VarChar(120)
+  email                String   @db.VarChar(254)
+  subject              String   @db.VarChar(120)
+  message              String   @db.VarChar(3000)
+  privacyNoticeVersion String   @db.VarChar(40)
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([email, createdAt])
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique @db.Char(64)
+  familyId  String    @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([familyId, revokedAt])
+  @@index([expiresAt])
+}
+
+model TrainingProgress {
+  id            String               @id @default(uuid()) @db.Uuid
+  applicationId String               @unique @db.Uuid
+  status        TrainingStatus       @default(NOT_STARTED)
+  percentage    Int                  @default(0)
+  internalNote  String?              @db.VarChar(1000)
+  updatedById   String?              @db.Uuid
+  application   CandidateApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  updatedBy     User?                @relation("TrainingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model Assessment {
+  id            String               @id @default(uuid()) @db.Uuid
+  applicationId String               @unique @db.Uuid
+  status        AssessmentStatus     @default(PENDING)
+  score         Decimal?             @db.Decimal(5, 2)
+  internalNote  String?              @db.VarChar(1000)
+  completedAt   DateTime?
+  updatedById   String?              @db.Uuid
+  application   CandidateApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  updatedBy     User?                @relation("AssessmentUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+model CandidateEmployerMatch {
+  id                     String               @id @default(uuid()) @db.Uuid
+  candidateApplicationId String               @db.Uuid
+  hiringRequestId        String               @db.Uuid
+  createdById            String               @db.Uuid
+  authorizedAt           DateTime             @default(now())
+  candidateApplication   CandidateApplication @relation(fields: [candidateApplicationId], references: [id], onDelete: Cascade)
+  hiringRequest          HiringRequest        @relation(fields: [hiringRequestId], references: [id], onDelete: Cascade)
+  createdBy              User                 @relation("MatchCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt              DateTime             @default(now())
+
+  @@unique([candidateApplicationId, hiringRequestId])
+  @@index([hiringRequestId, authorizedAt])
+  @@index([candidateApplicationId, authorizedAt])
+}
+
+model Placement {
+  id                     String               @id @default(uuid()) @db.Uuid
+  candidateApplicationId String               @unique @db.Uuid
+  hiringRequestId        String               @db.Uuid
+  placedById             String               @db.Uuid
+  placedAt               DateTime             @default(now())
+  internalNote           String?              @db.VarChar(1000)
+  candidateApplication   CandidateApplication @relation(fields: [candidateApplicationId], references: [id], onDelete: Restrict)
+  hiringRequest          HiringRequest        @relation(fields: [hiringRequestId], references: [id], onDelete: Restrict)
+  placedBy               User                 @relation("PlacementCreator", fields: [placedById], references: [id], onDelete: Restrict)
+  createdAt              DateTime             @default(now())
+
+  @@index([hiringRequestId, placedAt])
+  @@index([placedById, placedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String   @db.VarChar(80)
+  entityType String   @db.VarChar(80)
+  entityId   String   @db.Uuid
+  details    Json?
+  actor      User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
